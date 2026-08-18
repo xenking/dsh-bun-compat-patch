@@ -2,7 +2,7 @@
 
 `dsh-bun-compat-patch` 是一个用于在 **Bun 1.3.14** 上运行 DeepSeek Harness（DSH）的兼容层。
 
-它不会修改 Bun，也不会直接修改项目中已经安装的 DSH。启动时，兼容层会在 DSH 项目根目录创建一个临时的依赖影子副本，只对需要兼容的 DSH 模块进行转换，然后从影子副本启动 DSH。
+它不会修改 Bun，也不会直接修改项目中已经安装的 DSH。启动时，兼容层会在系统临时目录创建一个依赖影子副本，只对需要兼容的 DSH 模块进行转换，然后从影子副本启动 DSH。兼容层可以只复制 `lib/` 到目标项目使用，不要求目标项目安装本包或配置包导出。
 
 ## 解决的问题
 
@@ -52,33 +52,36 @@ bun run build
 bun run build
 ```
 
-## 目录位置要求
+## 复制 lib 到其他项目
 
-兼容层会从自身所在目录开始向上查找：
+构建后，将整个 `lib/` 目录复制到已经安装 DSH 的目标项目中。例如：
+
+```text
+my-dsh-project/
+├── lib/
+│   ├── preload.js
+│   ├── runtime-hook.js
+│   ├── node-module.js
+│   └── ...
+└── node_modules/
+    └── @deepseek-ai/
+        └── dsh/
+```
+
+然后在目标项目根目录运行：
+
+```sh
+bun --preload ./lib/preload.js \
+  ./node_modules/@deepseek-ai/dsh/lib/bin.js web
+```
+
+`lib/` 也可以使用其他目录名，或放在目标项目的子目录中。预加载器会从 `preload.js` 所在目录向上查找：
 
 ```text
 node_modules/@deepseek-ai/dsh/package.json
 ```
 
-因此需要满足以下任意一种目录关系：
-
-1. 补丁就是当前项目，并且 DSH 安装在它自己的 `node_modules` 中。
-2. 补丁目录位于 DSH 项目根目录内部。
-3. 补丁已经作为依赖安装到 DSH 项目的 `node_modules` 中。
-
-例如，使用源码目录时可以采用下面的结构：
-
-```text
-my-dsh-project/
-├── node_modules/
-│   └── @deepseek-ai/
-│       └── dsh/
-└── dsh-bun-compat-patch/
-    └── lib/
-        └── preload.js
-```
-
-如果补丁目录与 DSH 项目是互不包含的两个平级目录，预加载器将无法找到 DSH。此时应将补丁安装为项目依赖，或者把补丁目录放入 DSH 项目中。
+因此该目录必须位于 DSH 项目根目录内。兼容模块使用 `lib/*.js` 的实际文件 URL 引入，不通过 `node_modules` 包名解析，也不依赖目标项目的 `package.json`。
 
 ## 使用源码启动 DSH
 
@@ -118,7 +121,7 @@ bun --preload ./lib/preload.js \
 
 其他 DSH 命令行参数也会原样传递给真正的 DSH 进程。
 
-## 作为本地包使用
+## 作为本地包使用（可选）
 
 先在补丁目录制作 npm tarball：
 
@@ -176,17 +179,15 @@ bun --preload dsh-bun-compat-patch/preload \
 
 兼容层使用的其他 `DSH_BUN_COMPAT_*` 环境变量由预加载器自动设置，通常不需要手动配置。
 
-## 影子依赖缓存
+## 临时影子目录
 
-每次启动时，兼容层会在 DSH 项目根目录创建：
+每次启动时，兼容层会在操作系统的临时目录创建一个独立的影子目录。目标项目中不会再生成：
 
 ```text
 .dsh-bun-compat-patch-cache/
 ```
 
-这个目录包含经过转换的 DSH 影子副本。原始 `node_modules` 不会被修改。
-
-缓存会在下次启动时自动删除并重新创建，不需要手动维护。不要把该目录提交到版本控制系统。同一个 DSH 项目不建议同时启动多个兼容层实例，因为它们会共用并重建同一个缓存目录。
+这个临时目录包含经过转换的 DSH 影子副本，原始 `node_modules` 不会被修改。DSH 进程退出后，预加载器会自动删除对应的临时目录；不同实例使用各自的目录，可以同时启动。
 
 ## HMR 限制
 
@@ -258,16 +259,21 @@ bun run build
 
 1. Bun 加载 `lib/preload.js`。
 2. 预加载器查找包含 DSH 的项目根目录。
-3. 在 `.dsh-bun-compat-patch-cache/` 中创建依赖影子副本。
-4. 将 DSH code runtime 对 `node:module` 和 `node:worker_threads` 的导入替换为兼容实现。
+3. 在系统临时目录中创建依赖影子副本。
+4. 将 DSH code runtime 对 `node:module` 和 `node:worker_threads` 的导入替换为当前 `lib/` 中兼容实现的文件 URL。
 5. 调整 DSH profile 启动代码并禁用不兼容的服务端 HMR。
 6. Bun 从影子副本重新启动 DSH。
 7. 需要 Worker 时，兼容层启动系统 Node.js，并由 Node 原生 Worker 执行目标代码。
 
-这种方式将改动限制在临时缓存目录中，删除缓存即可移除所有运行期转换结果。
+这种方式将改动限制在自动清理的临时目录中，不会在目标项目输出缓存文件。
 
 ## 项目信息
 
+- 当前版本：`0.1.0`
+- 已验证环境：Bun `1.3.14`、Node.js `>=22.6.0`、DeepSeek Harness `0.1.0-rc.7`
+- 分发方式：可直接复制构建后的 `lib/`，也可作为本地 npm 包安装
+- 模块加载：兼容模块使用 `lib/*.js` 文件 URL，不依赖目标项目的包导出配置
+- 运行期文件：影子副本位于系统临时目录，进程退出后自动清理
 - 作者：[MonshinYu](https://github.com/MonshinYu)
 - 邮箱：[MonshinYu@Gmail.com](mailto:MonshinYu@Gmail.com)
 - 代码仓库：[github.com/MonshinYu/dsh-bun-compat-patch](https://github.com/MonshinYu/dsh-bun-compat-patch)

@@ -12,9 +12,6 @@ lib/
 # Package archives
 *.tgz
 
-# Runtime cache
-.dsh-bun-compat-patch-cache/
-
 # Environment files
 .env
 .env.*

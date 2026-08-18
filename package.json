@@ -1,7 +1,7 @@
 {
   "name": "dsh-bun-compat-patch",
   "version": "0.1.0",
-  "description": "Bun 1.3.14 上运行 DeepSeek Harness 的 Node API 兼容层",
+  "description": "可通过独立 lib 目录在 Bun 1.3.14 上运行 DeepSeek Harness 的 Node API 兼容层",
   "keywords": [
     "deepseek",
     "deepseek-harness",
@@ -11,6 +11,8 @@
     "nodejs",
     "worker-threads",
     "typescript",
+    "portable",
+    "standalone",
     "compatibility-layer"
   ],
   "author": {
@@ -31,18 +33,14 @@
     "lib",
     "README.md"
   ],
-  "exports": {
-    "./preload": "./lib/preload.js",
-    "./node-module": "./lib/node-module.js",
-    "./node-worker-threads": "./lib/node-worker-threads.js"
-  },
   "scripts": {
     "build": "bun run ./build.ts",
     "prepack": "bun run build",
     "pack": "bun pm pack"
   },
   "engines": {
-    "bun": "1.3.14"
+    "bun": "1.3.14",
+    "node": ">=22.6.0"
   },
   "license": "MIT",
   "dependencies": {
