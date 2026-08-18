@@ -6,7 +6,7 @@ if (!process.env.DSH_BUN_COMPAT_CHILD && process.argv.some((value) => value.ends
   const root = findWorkspaceRoot(packageRoot);
   const cache = prepareShadow(root, packageRoot);
   const entry = join(cache, "node_modules/@deepseek-ai/dsh/lib/bin.js");
-  const hook = join(packageRoot, "dist/runtime-hook.js");
+  const hook = join(packageRoot, "lib/runtime-hook.js");
   const child = Bun.spawn([process.execPath, "--preload", hook, entry, ...process.argv.slice(2)], {
     cwd: root,
     env: {

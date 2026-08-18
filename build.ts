@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const root = import.meta.dir;
-const outdir = join(root, "dist");
+const outdir = join(root, "lib");
 rmSync(outdir, { recursive: true, force: true });
 mkdirSync(outdir, { recursive: true });
 
@@ -12,11 +12,7 @@ const bunEntries = [
   "diagnostic",
   "shadow",
   "node-module",
-  "node-worker-threads",
-  "check",
-  "test",
-  "test-worker",
-  "memory-worker"
+  "node-worker-threads"
 ].map((name) => join(root, "src", `${name}.ts`));
 
 const nodeEntries = ["strip-types", "worker-bootstrap"].map((name) =>
