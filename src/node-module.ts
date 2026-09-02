@@ -1,25 +1,19 @@
-import { fileURLToPath } from "node:url";
+import {Transpiler} from "bun";
 
-export interface StripTypeScriptOptions {
-  mode?: "strip" | "transform";
-  sourceUrl?: string;
-  sourceMap?: boolean;
-}
+const transpiler = new Transpiler({ loader: "ts" });
 
-export function stripTypeScriptTypes(code: string, options: StripTypeScriptOptions = {}): string {
-  if (typeof code !== "string") throw new TypeError("code 必须是字符串");
-  const helper = fileURLToPath(new URL("./strip-types.js", import.meta.url));
-  const encodedOptions = Buffer.from(JSON.stringify(options)).toString("base64");
-  const result = Bun.spawnSync(["node", helper, encodedOptions], {
-    stdin: Buffer.from(code),
-    stdout: "pipe",
-    stderr: "pipe"
-  });
-  if (result.exitCode !== 0) {
-    const detail = result.stderr.toString().trim();
-    const error = new SyntaxError(detail || "stripTypeScriptTypes 执行失败");
-    Object.assign(error, { code: "ERR_INVALID_TYPESCRIPT_SYNTAX" });
-    throw error;
-  }
-  return result.stdout.toString();
+/**
+ * Strip TypeScript type annotations from source code.
+ * Mirrors `node:module.stripTypeScriptTypes` for environments that lack it.
+ */
+export function stripTypeScriptTypes(code: string, options: { sourceUrl?: string } = {}): string {
+  if (typeof code !== "string") throw new TypeError("code must be a string");
+  const stripped = (() => {
+    try {
+      return transpiler.transformSync(code);
+    } catch (error) {
+      throw new SyntaxError(error instanceof Error ? error.message : String(error));
+    }
+  })();
+  return options.sourceUrl ? `${stripped}\n//# sourceURL=${options.sourceUrl}` : stripped;
 }

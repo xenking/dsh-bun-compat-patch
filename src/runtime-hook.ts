@@ -1,1 +1,0 @@
-import "./diagnostic.js";
