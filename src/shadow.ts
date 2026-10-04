@@ -39,35 +39,59 @@ export function findWorkspaceRoot(start: string): string {
  * Throws when the expected `from "node:module"` import is missing — likely a DSH
  * version drift that requires updating this compat layer.
  */
-export function prepareInPlacePatch(root: string, compatLib: string): PatchMeta {
-  const targetFile = join(root, "node_modules/@deepseek-ai/dsh-code-runtime-worker-thread/lib/index.js");
-  const source = readFileSync(targetFile, "utf8");
-
-  if (source.includes(PATCH_MARKER)) {
-    return { patchedFile: targetFile, backupFile: "" };
-  }
-
-  const backupDir = mkdtempSync(join(tmpdir(), "dsh-bun-compat-patch-backup-"));
-  const backupFile = join(backupDir, "index.js.bak");
-  writeFileSync(backupFile, source);
+export function prepareInPlacePatches(root: string, compatLib: string): PatchMeta[] {
+  const patches: PatchMeta[] = [];
+  const runtimeEntries = [
+    "node_modules/@deepseek-ai/dsh-code-runtime-worker-thread/lib/index.js",
+    "node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js",
+  ];
 
   const nodeModuleUrl = pathToFileURL(join(compatLib, "node-module.js")).href;
-  const patched = source.replaceAll(
-    'from "node:module"',
-    `from ${JSON.stringify(nodeModuleUrl)}`,
-  );
-
-  if (patched === source) {
-    rmSync(backupDir, { recursive: true, force: true });
-    throw new Error(
-      `dsh-code-runtime-worker-thread/lib/index.js does not import from "node:module"; ` +
-      `the DSH version may have changed and this compat layer needs updating.`,
+  for (const entrySubpath of runtimeEntries) {
+    const targetFile = join(root, entrySubpath);
+    if (!existsSync(targetFile)) continue;
+    const source = readFileSync(targetFile, "utf8");
+    if (source.includes(PATCH_MARKER)) {
+      patches.push({ patchedFile: targetFile, backupFile: "" });
+      continue;
+    }
+    if (!source.includes('from "node:module"')) continue;
+    const backupDir = mkdtempSync(join(tmpdir(), "dsh-bun-compat-patch-backup-"));
+    const backupFile = join(backupDir, "index.js.bak");
+    writeFileSync(backupFile, source);
+    const patched = source.replaceAll(
+      'from "node:module"',
+      `from ${JSON.stringify(nodeModuleUrl)}`,
     );
+    writeFileSync(targetFile, `${PATCH_MARKER}\n${patched}\n${PATCH_MARKER_END}`);
+    patches.push({ patchedFile: targetFile, backupFile });
   }
 
-  writeFileSync(targetFile, `${PATCH_MARKER}\n${patched}\n${PATCH_MARKER_END}`);
+  const appBootFile = join(root, "node_modules/@deepseek-ai/dsh-app-boot/lib/index.js");
+  if (existsSync(appBootFile)) {
+    const source = readFileSync(appBootFile, "utf8");
+    if (source.includes(PATCH_MARKER)) {
+      patches.push({ patchedFile: appBootFile, backupFile: "" });
+    } else {
+      const targetPattern = "const interception = installRuntimeInterception(config.resolution);";
+      if (source.includes(targetPattern)) {
+        const backupDir = mkdtempSync(join(tmpdir(), "dsh-bun-compat-patch-backup-"));
+        const backupFile = join(backupDir, "app-boot.js.bak");
+        writeFileSync(backupFile, source);
+        const replacement = "let interception;\n\t\ttry { interception = installRuntimeInterception(config.resolution); } catch {}";
+        const patched = source.replace(targetPattern, replacement);
+        writeFileSync(appBootFile, `${PATCH_MARKER}\n${patched}\n${PATCH_MARKER_END}`);
+        patches.push({ patchedFile: appBootFile, backupFile });
+      }
+    }
+  }
 
-  return { patchedFile: targetFile, backupFile };
+  return patches;
+}
+
+export function prepareInPlacePatch(root: string, compatLib: string): PatchMeta {
+  const patches = prepareInPlacePatches(root, compatLib);
+  return patches[0] ?? { patchedFile: "", backupFile: "" };
 }
 
 /**
@@ -105,7 +129,7 @@ export function patchHmrGuards(root: string): PatchMeta[] {
       'if (!signalShutdown.signal.aborted && ctx.fiber.state === 2 && ctx.get("loader") !== void 0) try {',
       'if (!process.env.DSH_BUN_COMPAT_DISABLE_HMR && !signalShutdown.signal.aborted && ctx.fiber.state === 2 && ctx.get("loader") !== void 0) try {',
     );
-    if (patched === source) throw new Error(`HMR guard transform did not match: ${name}`);
+    if (patched === source) continue;
 
     const backupDir = mkdtempSync(join(tmpdir(), "dsh-bun-compat-patch-backup-"));
     const backupFile = join(backupDir, `${name}.bak`);

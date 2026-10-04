@@ -2,7 +2,7 @@ import "./diagnostic.js";
 import {existsSync} from "node:fs";
 import {dirname, resolve} from "node:path";
 import type {PatchMeta} from "./shadow.js";
-import {findWorkspaceRoot, patchHmrGuards, prepareInPlacePatch, restorePatch} from "./shadow.js";
+import {findWorkspaceRoot, patchHmrGuards, prepareInPlacePatches, restorePatch} from "./shadow.js";
 
 if (!process.env.DSH_BUN_COMPAT_CHILD) {
   const entry = process.argv[1];
@@ -19,9 +19,9 @@ if (!process.env.DSH_BUN_COMPAT_CHILD) {
       }
     }
 
-    const root = findWorkspaceRoot(compatLib);
+    const root = findWorkspaceRoot(entry ? dirname(entry) : process.cwd());
 
-    const patches: PatchMeta[] = [prepareInPlacePatch(root, compatLib)];
+    const patches: PatchMeta[] = prepareInPlacePatches(root, compatLib);
     patches.push(...patchHmrGuards(root));
 
     const childArgs = process.argv.slice(2);
@@ -41,7 +41,7 @@ if (!process.env.DSH_BUN_COMPAT_CHILD) {
         stderr: "inherit",
       });
       for (const signal of ["SIGINT", "SIGTERM"] as const) {
-        process.on(signal, () => { try { child?.kill(); } catch (_e) { /* ignore */ } });
+        process.on(signal, () => { try { child?.kill(); } catch { /* ignore */ } });
       }
       exitCode = await child.exited;
     } finally {
