@@ -7,7 +7,11 @@ rmSync(outdir, { recursive: true, force: true });
 mkdirSync(outdir, { recursive: true });
 
 const result = await Bun.build({
-  entrypoints: [join(root, "src/preload.ts"), join(root, "src/node-module.ts")],
+  entrypoints: [
+    join(root, "src/preload.ts"),
+    join(root, "src/node-module.ts"),
+    join(root, "src/quicktype-generator.ts"),
+  ],
   outdir,
   target: "bun",
   format: "esm",
